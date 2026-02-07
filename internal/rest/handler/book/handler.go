@@ -201,6 +201,8 @@ func (h *Handler) CancelRequest(c *gin.Context) {
 	response.Success(c, gin.H{"message": "request cancelled"})
 }
 
+func (h *Handler) BatchCreate(c *gin.Context) {}
+
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 	books := r.Group("/books")
 	{
@@ -213,6 +215,7 @@ func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 		books.DELETE("/:id/request", h.CancelRequest)
 		books.GET("/:id/requested", h.CheckBookRequested)
 		books.POST("/:id/return", h.ReturnBook)
+		books.POST("/batch", h.BatchCreate)
 	}
 
 	// User's book requests and history
