@@ -1,6 +1,11 @@
 package bookhandler
 
 import (
+	"encoding/csv"
+	"fmt"
+	"strconv"
+	"strings"
+
 	"github.com/gin-gonic/gin"
 	"github.com/yourusername/online-library/internal/book"
 	"github.com/yourusername/online-library/internal/domain"
@@ -201,7 +206,107 @@ func (h *Handler) CancelRequest(c *gin.Context) {
 	response.Success(c, gin.H{"message": "request cancelled"})
 }
 
-func (h *Handler) BatchCreate(c *gin.Context) {}
+func (h *Handler) BatchCreate(c *gin.Context) {
+	file, err := c.FormFile("file")
+	if err != nil {
+		response.BadRequest(c, "file is required")
+		return
+	}
+
+	f, err := file.Open()
+	if err != nil {
+		response.Error(c, err)
+		return
+	}
+	defer f.Close()
+
+	reader := csv.NewReader(f)
+	records, err := reader.ReadAll()
+	if err != nil {
+		response.Error(c, fmt.Errorf("failed to parse CSV"))
+		return
+	}
+
+	var books []*domain.Book
+
+	for i, record := range records {
+		if i == 0 && record[0] == "title" {
+			continue // skip header
+		}
+
+		// Validate mandatory fields
+		if len(record) < 8 ||
+			strings.TrimSpace(record[0]) == "" || // Title
+			strings.TrimSpace(record[1]) == "" || // Author
+			strings.TrimSpace(record[2]) == "" || // ISBN
+			strings.TrimSpace(record[3]) == "" || // CoverURL
+			strings.TrimSpace(record[4]) == "" || // Description
+			strings.TrimSpace(record[5]) == "" || // Category
+			strings.TrimSpace(record[6]) == "" || // Tags
+			strings.TrimSpace(record[7]) == "" { // Topics
+
+			response.BadRequest(c, fmt.Sprintf("Invalid data at row %d", i))
+			return
+		}
+
+		// Parse tags and topics inline
+		tags := []string{}
+		for _, t := range strings.Split(record[6], ",") {
+			if trimmed := strings.TrimSpace(t); trimmed != "" {
+				tags = append(tags, trimmed)
+			}
+		}
+
+		topics := []string{}
+		for _, t := range strings.Split(record[7], ",") {
+			if trimmed := strings.TrimSpace(t); trimmed != "" {
+				topics = append(topics, trimmed)
+			}
+		}
+
+		// Safe get for optional fields
+		physicalCode := ""
+		if len(record) > 8 {
+			physicalCode = strings.TrimSpace(record[8])
+		}
+
+		maxReadingDays := 0
+		if len(record) > 9 && strings.TrimSpace(record[9]) != "" {
+			if val, err := strconv.Atoi(strings.TrimSpace(record[9])); err == nil {
+				maxReadingDays = val
+			}
+		}
+
+		books = append(books, &domain.Book{
+			Title:          strings.TrimSpace(record[0]),
+			Author:         strings.TrimSpace(record[1]),
+			ISBN:           strings.TrimSpace(record[2]),
+			CoverURL:       strings.TrimSpace(record[3]),
+			Description:    strings.TrimSpace(record[4]),
+			Category:       strings.TrimSpace(record[5]),
+			Tags:           tags,
+			Topics:         topics,
+			PhysicalCode:   physicalCode,
+			MaxReadingDays: maxReadingDays,
+		})
+	}
+
+	// If validation passed, create all books
+	var createdBooks []*domain.Book
+	for _, book := range books {
+		created, err := h.bookSvc.Create(c.Request.Context(), book)
+		if err != nil {
+			response.Error(c, fmt.Errorf("failed to create books: %v", err))
+			return
+		}
+		createdBooks = append(createdBooks, created)
+	}
+
+	response.Success(c, gin.H{
+		"success_count": len(createdBooks),
+		"books":         createdBooks,
+	})
+}
 
 func RegisterRoutes(r *gin.RouterGroup, h *Handler) {
 	books := r.Group("/books")
