@@ -135,6 +135,7 @@ backend/
 - `GET /api/v1/books` - List books
 - `GET /api/v1/books/:id` - Get book
 - `POST /api/v1/books` - Create book (protected)
+- `POST /api/v1/books/batch` - Batch upload books via CSV (protected)
 - `PATCH /api/v1/books/:id` - Update book (protected)
 - `DELETE /api/v1/books/:id` - Delete book (protected)
 
